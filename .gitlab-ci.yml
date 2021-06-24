@@ -1,0 +1,14 @@
+stages:
+- check
+
+pre-commit:
+  stage: check
+  image: python:3
+  before_script:
+  - pip install pre-commit
+  script:
+  - pre-commit run --all-files || {
+        >&2 echo "pre-commit checks failed. Please consider installing pre-commit";
+        >&2 echo "hooks in your local Git clone by running \`make git-hooks-install\`.";
+        exit 1;
+    }
