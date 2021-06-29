@@ -1,15 +1,16 @@
 import os
 import runpy
+from typing import Optional, cast
 
 from setuptools import find_packages, setup
 
 
-def get_version_from_pyfile(version_file="gitlab_multi_group_runner.py"):
+def get_version_from_pyfile(version_file: str = "gitlab_multi_group_runner/_version.py") -> str:
     file_globals = runpy.run_path(version_file)
-    return file_globals["__version__"]
+    return cast(str, file_globals["__version__"])
 
 
-def get_long_description_from_readme(readme_filename="README.md"):
+def get_long_description_from_readme(readme_filename: str = "README.md") -> Optional[str]:
     long_description = None
     if os.path.isfile(readme_filename):
         with open(readme_filename, "r", encoding="utf-8") as readme_file:
@@ -25,10 +26,10 @@ setup(
     version=version,
     packages=find_packages(),
     python_requires="~=3.6",
-    install_requires=[],
+    install_requires=["cerberus", "python-gitlab", "pyyaml", "yacl[colored_exceptions]"],
     entry_points={
         "console_scripts": [
-            "gitlab-multi-group-runner = gitlab_multi_group_runner:main",
+            "gitlab-multi-group-runner = gitlab_multi_group_runner.cli:main",
         ]
     },
     author="Ingo Meyer",
