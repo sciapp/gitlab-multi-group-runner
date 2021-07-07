@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, Iterable, Iterator, List, Optional, TextIO, Tuple, Union, cast
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, TextIO, Tuple, Union, cast
 
 import yaml
 from cerberus import Validator
@@ -78,6 +78,7 @@ class Gitlab:
     def __init__(self, gitlab_url: str, private_token: str, dry_run: bool = False):
         self._gitlab = _Gitlab(gitlab_url, private_token=private_token)
         self._dry_run = dry_run
+        self._projects_with_already_disabled_shared_runners: Set[int] = set()
 
     def get_project(self, project_id_or_path: Union[str, int]) -> GitlabProject:
         try:
@@ -205,24 +206,44 @@ class Gitlab:
             runner = runner_or_id
         for project in projects:
             if disable_shared_runners:
-                if project.shared_runners_enabled:
-                    if self._dry_run:
-                        logger.info('Would disable shared runners in project "%s"', project.path_with_namespace)
+                if project.id not in self._projects_with_already_disabled_shared_runners:
+                    if project.shared_runners_enabled:
+                        if self._dry_run:
+                            logger.info('Would disable shared runners in project "%s"', project.path_with_namespace)
+                        else:
+                            logger.info('Disable shared runners in project "%s"', project.path_with_namespace)
+                            project.shared_runners_enabled = False
+                            project.save()
                     else:
-                        logger.info('Disable shared runners in project "%s"', project.path_with_namespace)
-                        project.shared_runners_enabled = False
-                        project.save()
-                else:
-                    logger.info('Shared runners are already disabled in project "%s"', project.path_with_namespace)
+                        logger.info('Shared runners are already disabled in project "%s"', project.path_with_namespace)
+                    self._projects_with_already_disabled_shared_runners.add(project.id)
             project_runners = project.runners.list(all=True)
             if runner.id not in (r.id for r in project_runners):
                 if self._dry_run:
-                    logger.info('Would enable runner `%d` in project "%s"', runner.id, project.path_with_namespace)
+                    logger.info(
+                        'Would enable runner "%s", (id: `%d`, tags: ["%s"]) in project "%s"',
+                        runner.description,
+                        runner.id,
+                        '", "'.join(runner.tag_list),
+                        project.path_with_namespace,
+                    )
                 else:
-                    logger.info('Enable runner `%d` in project "%s"', runner.id, project.path_with_namespace)
+                    logger.info(
+                        'Enable runner "%s", (id: `%d`, tags: ["%s"]) in project "%s"',
+                        runner.description,
+                        runner.id,
+                        '", "'.join(runner.tag_list),
+                        project.path_with_namespace,
+                    )
                     project.runners.create({"runner_id": runner.id})
             else:
-                logger.info('Runner `%d` is already enabled in project "%s"', runner.id, project.path_with_namespace)
+                logger.info(
+                    'Runner "%s", (id: `%d`, tags: ["%s"]) is already enabled in project "%s"',
+                    runner.description,
+                    runner.id,
+                    '", "'.join(runner.tag_list),
+                    project.path_with_namespace,
+                )
 
 
 class MultiGroupRunnerConfig:
