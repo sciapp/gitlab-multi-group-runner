@@ -1,5 +1,8 @@
 stages:
 - check
+- build
+- deploy
+- deploy-to-aur
 
 pre-commit:
   stage: check
@@ -12,3 +15,95 @@ pre-commit:
         >&2 echo "hooks in your local Git clone by running \`make git-hooks-install\`.";
         exit 1;
     }
+
+build-linux-executable:
+  stage: build
+  image: centos:7
+  before_script:
+  - yum install -y epel-release
+  - yum install -y python36-pip upx
+  script:
+  - python3 setup.py bdist_pyinstaller
+  - PLATFORM=$(python3 -c 'import platform; print("{}_{}".format(platform.system(), platform.machine()).lower())');
+    mv "dist/${CI_PROJECT_NAME}" "dist/${CI_PROJECT_NAME}_${PLATFORM}"
+  artifacts:
+    expire_in: 1 week
+    paths:
+    - dist/
+
+build-macos-executable:
+  stage: build
+  image: macos:high-sierra-xcode-python3
+  tags:
+  - libvirt
+  script:
+  - python3 setup.py bdist_pyinstaller
+  - PLATFORM=$(python3 -c 'import platform; print("{}_{}".format(platform.system(), platform.machine()).lower())');
+    mv "dist/${CI_PROJECT_NAME}" "dist/${CI_PROJECT_NAME}_${PLATFORM}"
+  artifacts:
+    expire_in: 1 week
+    paths:
+    - dist/
+
+deploy-to-github:
+  stage: deploy
+  image: iffregistry.fz-juelich.de/docker-images/gr-build-images/deploy
+  variables:
+    GIT_STRATEGY: none
+  only:
+  - master@Scientific-IT-Systems/administration/gitlab-multi-group-runner
+  - develop@Scientific-IT-Systems/administration/gitlab-multi-group-runner
+  - tags@Scientific-IT-Systems/administration/gitlab-multi-group-runner
+  script:
+  - mkdir --mode=700 ~/.ssh/
+  - (umask 0377 && echo "${GITHUB_DEPLOY_KEY}" > ~/.ssh/id_rsa
+                && echo "github.com ${GITHUB_HOST_KEY}" >> ~/.ssh/known_hosts)
+  - git clone --mirror "${CI_REPOSITORY_URL}" "${CI_PROJECT_NAME}_mirror"
+  - cd "${CI_PROJECT_NAME}_mirror";
+    git push --mirror "git@github.com:sciapp/${CI_PROJECT_NAME}.git";
+    cd ..
+  - if echo "${CI_COMMIT_TAG}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+      python3 -m pip install
+      "git+https://gitlab-ci-token:${CI_JOB_TOKEN}@iffgit.fz-juelich.de/Scientific-IT-Systems/github-binary-upload.git";
+      echo "${GITHUB_ACCESS_TOKEN}" |
+        github-binary-upload --user IngoMeyer441 "sciapp/${CI_PROJECT_NAME}" "${CI_COMMIT_TAG}" dist/*;
+    fi
+
+deploy-to-pypi:
+  stage: deploy
+  image: python:3-slim
+  only:
+  - tags@Scientific-IT-Systems/administration/gitlab-multi-group-runner
+  script:
+  - pip install twine
+  - echo "[distutils]"                    > ~/.pypirc;
+    echo "index-servers ="               >> ~/.pypirc;
+    echo "    pypi"                      >> ~/.pypirc;
+    echo "[pypi]"                        >> ~/.pypirc;
+    echo "username = __token__"          >> ~/.pypirc;
+    echo "password = ${PYPI_DEPLOY_KEY}" >> ~/.pypirc;
+  - python setup.py sdist
+  - python setup.py bdist_wheel
+  - twine upload dist/*.tar.gz dist/*.whl
+
+deploy-to-aur:
+  stage: deploy-to-aur
+  image: iffregistry.fz-juelich.de/docker-images/gr-build-images/$CI_JOB_NAME
+  only:
+  - tags@Scientific-IT-Systems/administration/gitlab-multi-group-runner
+  script:
+  - mkdir --mode=700 ~/.ssh/
+  - (umask 0377 && echo "$AUR_PRIVATE_KEY" > ~/.ssh/id_rsa
+                && echo "aur.archlinux.org $AUR_HOST_KEY" >> ~/.ssh/known_hosts)
+  - git clone "ssh://aur@aur.archlinux.org/python-${CI_PROJECT_NAME}.git" "python-${CI_PROJECT_NAME}-aur"
+  - cd "python-${CI_PROJECT_NAME}-aur"
+  - sed -i -e "/^pkgver=/c\pkgver=\"${CI_COMMIT_TAG#v}\"" -e "/^pkgrel=/c\pkgrel=\"1\"" PKGBUILD
+  - (
+      source PKGBUILD;
+      curl -o source -L "${source[0]}";
+      SHA256SUM="$(sha256sum source | awk '{ print $1 }')";
+      sed -i "/^sha256sums=/c\sha256sums=(\"${SHA256SUM}\")" PKGBUILD;
+    )
+  - makepkg --printsrcinfo > .SRCINFO
+  - git commit -a -m "Update to version ${CI_COMMIT_TAG#v}"
+  - git push

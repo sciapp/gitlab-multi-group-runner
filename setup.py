@@ -1,8 +1,50 @@
 import os
 import runpy
-from typing import Optional, cast
+import subprocess
+from distutils.cmd import Command
+from tempfile import TemporaryDirectory
+from typing import List, Optional, Tuple, cast
 
 from setuptools import find_packages, setup
+
+
+class PyinstallerCommand(Command):
+    description = "create a self-contained executable with PyInstaller"
+    user_options = []  # type: List[Tuple[str, Optional[str], str]]
+
+    def initialize_options(self) -> None:
+        pass
+
+    def finalize_options(self) -> None:
+        pass
+
+    def run(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            subprocess.check_call(["python3", "-m", "venv", os.path.join(temp_dir, "env")])
+            subprocess.check_call([os.path.join(temp_dir, "env/bin/pip"), "install", "."])
+            subprocess.check_call([os.path.join(temp_dir, "env/bin/pip"), "install", "pyinstaller"])
+            with open(os.path.join(temp_dir, "entrypoint.py"), "w") as f:
+                f.write(
+                    """
+#!/usr/bin/env python3
+
+from gitlab_multi_group_runner.cli import main
+
+
+if __name__ == "__main__":
+    main()
+                    """.strip()
+                )
+            subprocess.check_call(
+                [
+                    os.path.join(temp_dir, "env/bin/pyinstaller"),
+                    "--clean",
+                    "--name=gitlab-multi-group-runner",
+                    "--onefile",
+                    "--strip",
+                    os.path.join(temp_dir, "entrypoint.py"),
+                ]
+            )
 
 
 def get_version_from_pyfile(version_file: str = "gitlab_multi_group_runner/_version.py") -> str:
@@ -32,6 +74,7 @@ setup(
             "gitlab-multi-group-runner = gitlab_multi_group_runner.cli:main",
         ]
     },
+    cmdclass={"bdist_pyinstaller": PyinstallerCommand},
     author="Ingo Meyer",
     author_email="i.meyer@fz-juelich.de",
     description="A helper to assign a GitLab runner to multiple groups and projects",
@@ -49,12 +92,12 @@ setup(
         "Operating System :: POSIX :: Linux",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3 :: Only",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3 :: Only",
         "Topic :: Software Development",
         "Topic :: Software Development :: Version Control",
         "Topic :: Software Development :: Version Control :: Git",
