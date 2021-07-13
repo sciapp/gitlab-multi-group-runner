@@ -1,3 +1,4 @@
+default_stages: ['commit']
 repos:
 # pre-commit repo:
 - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -17,8 +18,6 @@ repos:
   - id: fix-byte-order-marker  # removes UTF-8 byte order marker
   - id: mixed-line-ending  # Replaces or checks mixed line endings
     args: ['--fix=lf']
-  - id: no-commit-to-branch  # Protect specific branches from direct checkins
-    args: ['--branch=master']
   - id: trailing-whitespace  # Trims trailing whitespace
   # Python specific hooks:
   - id: check-ast  # Simply check whether files parse as valid python
@@ -34,6 +33,11 @@ repos:
   hooks:
   - id: editorconfig-checker
     exclude_types: [markdown]
+- repo: https://github.com/IngoMeyer441/detect-direct-checkins
+  rev: v0.1.1
+  hooks:
+  - id: detect-direct-checkins
+    args: ['--branch=master', '--allow-root']
 - repo: https://github.com/jorisroovers/gitlint
   rev: v0.15.1
   hooks:
@@ -54,14 +58,14 @@ repos:
       '--config-data={extends: default, rules: {indentation: {indent-sequences: consistent}, line-length: {max: 120}}}'
     ]
 - repo: https://github.com/sirosen/check-jsonschema
-  rev: 0.3.2
+  rev: 0.4.0
   hooks:
   - id: check-jsonschema
     name: "Validate GitLab CI configuration"
     files: ^\.gitlab-ci.yml
     args: ["--schemafile", "https://json.schemastore.org/gitlab-ci"]
 - repo: https://github.com/sirosen/check-jsonschema
-  rev: 0.3.2
+  rev: 0.4.0
   hooks:
   - id: check-github-workflows
 # Python specific repos:
@@ -71,7 +75,7 @@ repos:
   - id: black
     args: ['--line-length=120']
 - repo: https://github.com/PyCQA/isort
-  rev: 5.9.1
+  rev: 5.9.2
   hooks:
   - id: isort
     args: [  # Arguments for `black` compatibility
