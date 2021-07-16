@@ -152,8 +152,9 @@ def main() -> None:
                     )
                 )
             runner_configs = [matching_runner_config]
+        assigned_runners_without_problems = True
         for runner_config in runner_configs:
-            assign_multi_group_runner(
+            no_warnings = assign_multi_group_runner(
                 config_gitlab["url"],
                 config_gitlab["auth_token"],
                 runner_config["ids"],
@@ -163,13 +164,17 @@ def main() -> None:
                 config_general["disable_shared_runners"],
                 args.dry_run,
             )
+            assigned_runners_without_problems = assigned_runners_without_problems and no_warnings
     except exceptions as e:
         logger.error(str(e))
-        for i, exception_class in enumerate(exceptions, start=4):
+        for i, exception_class in enumerate(exceptions, start=5):
             if isinstance(e, exception_class):
                 sys.exit(i)
         sys.exit(1)
-    sys.exit(0)
+    if assigned_runners_without_problems:
+        sys.exit(0)
+    else:
+        sys.exit(4)
 
 
 if __name__ == "__main__":
