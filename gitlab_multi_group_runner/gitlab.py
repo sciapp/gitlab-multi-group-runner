@@ -277,7 +277,7 @@ def assign_multi_group_runner(
     allowed_projects_rules: Dict[str, Any],
     disable_shared_runners: bool,
     dry_run: bool = False,
-) -> None:
+) -> bool:
     def preprocess_allowed_project_rules() -> Dict[str, Any]:
         processed_project_rules: Dict[str, Any] = {}
         if "one_member_of" in allowed_projects_rules:
@@ -305,6 +305,7 @@ def assign_multi_group_runner(
                 return False
         return True
 
+    run_without_warnings = True
     gitlab = Gitlab(gitlab_url, private_token, dry_run)
     runner_config_project = gitlab.get_project(runner_config_repo_path)
     runner_config_content = gitlab.get_project_file(
@@ -323,14 +324,17 @@ def assign_multi_group_runner(
             logger.warning(
                 "The runner with id `%d` is not allowed to be assigned to other projects, skipping.", runner_id
             )
+            run_without_warnings = False
             continue
         try:
             runner = gitlab.get_runner(runner_id)
         except NoMatchingRunnerError:
             logger.warning("The runner with id `%d` is not accessible, skipping.", runner_id)
+            run_without_warnings = False
             continue
         except NotASpecificRunnerError:
             logger.warning("The runner with id `%d` is not a specific runner, skipping.", runner_id)
+            run_without_warnings = False
             continue
         for group_or_project in group_or_projects:
             try:
@@ -340,6 +344,7 @@ def assign_multi_group_runner(
                     projects = [gitlab.get_project(group_or_project)]
                 except NoMatchingProjectError:
                     logger.warning('"%s" is neither an accessible group nor project, skipping.', group_or_project)
+                    run_without_warnings = False
                     continue
             allowed_projects: List[GitlabProject] = []
             for project in projects:
@@ -349,9 +354,11 @@ def assign_multi_group_runner(
                         runner_id,
                         project.path_with_namespace,
                     )
+                    run_without_warnings = False
                     continue
                 allowed_projects.append(project)
             gitlab.activate_runner_in_projects(runner, allowed_projects, disable_shared_runners)
+    return run_without_warnings
 
 
 def write_example_multi_group_runner_config(config_filepath_or_file: Union[str, TextIO]) -> None:
