@@ -19,21 +19,24 @@ main () {
     runner_script="${args[-2]}"
     runner_stage="${args[-1]}"
 
-    if [[ "${runner_stage}" != "prepare_script" ]]; then
-        # Simply ignore all run stages except the first one (`prepare_script`)
-        return 0
-    fi
-
-    # Run the script which was prepared by GitLab itself:
-    bash "${runner_script}" || return "${BUILD_FAILURE_EXIT_CODE}"
-
-    # Afterwards, configure runners
-    CLICOLOR_FORCE=1 \
-    TERM=ansi \
-    "${SCRIPT_DIR}/gitlab-multi-group-runner" \
-        -f "${SCRIPT_DIR}/../etc/gitlab_multi_group_runnerrc.yml" \
-        "${gitlab_multi_group_runner_args[@]}" \
-        "${CUSTOM_ENV_CI_PROJECT_PATH}" || return "${BUILD_FAILURE_EXIT_CODE}"
+    case "${runner_stage}" in
+        prepare_script)
+            # Run the script which was prepared by GitLab itself:
+            bash "${runner_script}" || return "${BUILD_FAILURE_EXIT_CODE}"
+            ;;
+        build_script|step_script)
+            CLICOLOR_FORCE=1 \
+            TERM=ansi \
+            "${SCRIPT_DIR}/gitlab-multi-group-runner" \
+                -f "${SCRIPT_DIR}/../etc/gitlab_multi_group_runnerrc.yml" \
+                "${gitlab_multi_group_runner_args[@]}" \
+                "${CUSTOM_ENV_CI_PROJECT_PATH}" || return "${BUILD_FAILURE_EXIT_CODE}"
+            ;;
+        *)
+            # Simply ignore all other run stages
+            return 0
+            ;;
+    esac
 }
 
 main "$@"
